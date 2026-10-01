@@ -51,7 +51,7 @@ Before opening a PR, run `make check` and make sure it is green.
 
 ## Pull Requests and Releases
 
-Merged pull requests release themselves. Label the PR, merge it to `main`, and
+Merged pull requests release themselves. Label the PR, merge it to `master`, and
 [release-train](https://github.com/marketplace/actions/release-train) bumps the
 version, writes the release notes, and publishes the binaries `install.sh`
 downloads.
