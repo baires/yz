@@ -138,6 +138,10 @@ func (m setupModel) listen() tea.Cmd {
 }
 
 func (m setupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Progress already in flight must not overwrite the final frame before quit.
+	if m.summary != "" {
+		return m, nil
+	}
 	switch msg := msg.(type) {
 	case mascotTick:
 		m.mascotFrame++
