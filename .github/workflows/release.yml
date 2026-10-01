@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: git config
+        run: |
+          git config --local user.name '${{ github.actor }}'
+          git config --local user.email '${{ github.actor }}@users.noreply.github.com'
+
+      - uses: WillAbides/release-train@v3.9.0
+        with:
+          create-release: true
+          release-refs: main
+          initial-release-tag: v0.1.0
+          labels: |
+            feat=semver:minor
+            fix=semver:patch
+            perf=semver:patch
+            refactor=semver:patch
+            chore=semver:none
+            docs=semver:none
+            style=semver:none
+            breaking change=semver:breaking
+          pre-tag-hook: |
+            set -eu
+            if [ "${GITHUB_EVENT_NAME}" != "push" ]; then
+              exit 0
+            fi
+            make test
+            VERSION="${RELEASE_TAG}" bash scripts/release.sh
+            test -s dist/checksums.txt
+            test -s "dist/yz_${RELEASE_TAG}_darwin_amd64"
+            test -s "dist/yz_${RELEASE_TAG}_darwin_arm64"
+            test -s "dist/yz_${RELEASE_TAG}_linux_amd64"
+            test -s "dist/yz_${RELEASE_TAG}_linux_arm64"
+            cp dist/checksums.txt dist/yz_* "${ASSETS_DIR}/"
+            if [ "${FIRST_RELEASE}" = "true" ]; then
+              printf 'Initial release.\n' > "${RELEASE_NOTES_FILE}"
+            fi
+            printf '%s\n' "${RELEASE_TAG}" > version.txt
+            git add version.txt
+            git commit -m "bump version.txt to ${RELEASE_TAG}"
+            git tag "${RELEASE_TAG}"

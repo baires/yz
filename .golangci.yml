@@ -1,0 +1,36 @@
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - copyloopvar
+    - durationcheck
+    - errorlint
+    - modernize
+    - nilerr
+    - nolintlint
+    - unconvert
+  settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      module-path: yz
+    goimports:
+      local-prefixes:
+        - yz
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
