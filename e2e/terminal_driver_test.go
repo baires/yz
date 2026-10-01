@@ -12,9 +12,28 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
+
+// driverBuffer captures subprocess diagnostics while failure paths read them.
+type driverBuffer struct {
+	mu     sync.Mutex
+	buffer bytes.Buffer
+}
+
+func (b *driverBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.Write(p)
+}
+
+func (b *driverBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buffer.String()
+}
 
 type driverResponse struct {
 	ID         int             `json:"id"`
@@ -36,7 +55,7 @@ type terminalRun struct {
 	dec        *json.Decoder
 	encMu      chan struct{}
 	enc        *json.Encoder
-	pyErr      *bytes.Buffer
+	pyErr      *driverBuffer
 	nextID     int
 	waited     bool
 	closed     bool
@@ -68,7 +87,7 @@ func startTerminal(t *testing.T, env map[string]string, args ...string) *termina
 	if err != nil {
 		t.Fatalf("stdout pipe: %v", err)
 	}
-	var pyErr bytes.Buffer
+	var pyErr driverBuffer
 	cmd.Stderr = &pyErr
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("starting pty driver: %v", err)
@@ -261,7 +280,7 @@ func (r *terminalRun) close() {
 	}
 	done := make(chan struct{})
 	go func() {
-		_, _ = r.cmd.Process.Wait()
+		_ = r.cmd.Wait()
 		close(done)
 	}()
 	select {
@@ -313,4 +332,22 @@ func plainUsage() string {
 
 func maliciousName() string {
 	return "naïve-\x1b]0;pwned\x07\x1b[31mred\x1b[0m-\rINJECTED\u202ehidden.txt"
+}
+
+func TestDriverBufferConcurrentDiagnostics(t *testing.T) {
+	var buffer driverBuffer
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 1000 {
+			_, _ = buffer.Write([]byte("diagnostic\n"))
+		}
+	}()
+	for range 1000 {
+		_ = buffer.String()
+	}
+	<-done
+	if got := strings.Count(buffer.String(), "diagnostic\n"); got != 1000 {
+		t.Fatalf("captured %d diagnostics, want 1000", got)
+	}
 }
