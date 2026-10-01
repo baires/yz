@@ -27,7 +27,7 @@ Download a static yz release for this machine, verify its SHA-256, and
 install it. Release assets are named yz_<tag>_<os>_<arch> and are listed
 in checksums.txt, the same files a Homebrew formula can install later.
 
-  curl -fsSL https://raw.githubusercontent.com/baires/yz/main/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/baires/yz/master/install.sh | sh
 
 Options:
   -v, --version TAG   Release tag to install (default: latest)

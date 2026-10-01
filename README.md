@@ -18,7 +18,7 @@ https://pub-yourbucket.r2.dev/3kK9Xw0Lp2QmZb8N/screenshot.png
 ### Install script (macOS & Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/baires/yz/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/baires/yz/master/install.sh | sh
 ```
 
 The script downloads the latest [release](https://github.com/baires/yz/releases) for your OS and architecture, verifies the published SHA-256, and installs `yz` onto your `PATH`. Pin a version or install directory with `--version` / `--bin-dir`; see `install.sh --help`.
