@@ -327,7 +327,7 @@ func titleLine(text string) bool {
 }
 
 func plainUsage() string {
-	return "usage: yz [--signed] [--expires 24h] [--domain HOST] <file>"
+	return "usage: yz [--signed] [--expires 24h] [--domain HOST] [--clipboard] [file | -]"
 }
 
 func maliciousName() string {

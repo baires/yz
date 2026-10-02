@@ -22,15 +22,18 @@ import (
 	"github.com/baires/yz/internal/ui"
 )
 
-const shareUsage = "usage: yz [--signed] [--expires 24h] [--domain HOST] <file>"
+const shareUsage = "usage: yz [--signed] [--expires 24h] [--domain HOST] [--clipboard] [file | -]"
 
 const shareHelp = shareUsage + `
 
 Share a file and get a link you can paste anywhere.
 
-  yz setup                        Connect Cloudflare and choose an R2 bucket
+  yz                              Upload the image on the clipboard
   yz screenshot.png               Upload a file and print its link
-  yz --expires=1h report.pdf       Create a signed link that expires in an hour
+  yz -                            Upload stdin (a tar, a pipe, or any bytes)
+  yz --clipboard                  Upload a copied file, image, or text (macOS)
+  yz setup                        Connect Cloudflare and choose an R2 bucket
+  yz --expires=1h report.pdf      Create a signed link that expires in an hour
   yz --domain=files.example.com photo.jpg
                                   Use a custom domain for this share
   yz list                         Show previous shares
@@ -47,6 +50,7 @@ func runShare(args []string, env envConfig, stdout, stderr io.Writer) int {
 	signed := fs.Bool("signed", false, "print a presigned URL instead of a public one")
 	expires := fs.String("expires", "", "expire the share after a duration (e.g. 24h); implies --signed")
 	domain := fs.String("domain", "", "override the configured URL base host")
+	clipboard := fs.Bool("clipboard", false, "upload the macOS clipboard instead of a file")
 	fs.Usage = func() {
 		if ui.Animated(stderr) {
 			ui.WriteShareHelp(stderr, shareHelp)
@@ -57,7 +61,12 @@ func runShare(args []string, env envConfig, stdout, stderr io.Writer) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if fs.NArg() != 1 {
+	if *clipboard {
+		if fs.NArg() != 0 {
+			fs.Usage()
+			return 2
+		}
+	} else if fs.NArg() > 1 {
 		fs.Usage()
 		return 2
 	}
@@ -79,7 +88,7 @@ func runShare(args []string, env envConfig, stdout, stderr io.Writer) int {
 	}
 
 	opts := share.Options{
-		Path:       fs.Arg(0),
+		Path:       "",
 		Signed:     *signed,
 		Expires:    expiry,
 		HasExpires: hasExpires,
@@ -98,6 +107,14 @@ func runShare(args []string, env envConfig, stdout, stderr io.Writer) int {
 		writeDiag(stderr, "yz: not configured — run yz setup")
 		return 1
 	}
+
+	path, cleanup, err := shareSource(*clipboard, fs.Arg(0))
+	if err != nil {
+		writeDiag(stderr, err.Error())
+		return 1
+	}
+	defer cleanup()
+	opts.Path = path
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGHUP)
 	defer stop()
@@ -178,4 +195,28 @@ func writeDiag(stderr io.Writer, msg string) {
 		return
 	}
 	_, _ = fmt.Fprintln(stderr, ui.SafeText(msg))
+}
+
+// shareSource resolves the file to upload: the macOS clipboard, stdin, or a path.
+// cleanup removes a temp file when yz created one.
+func shareSource(clipboard bool, arg string) (path string, cleanup func(), err error) {
+	noop := func() {}
+	if clipboard {
+		return desktop.ClipboardFile()
+	}
+	if arg == "" {
+		return desktop.ClipboardImage()
+	}
+	if arg == "-" {
+		info, statErr := os.Stdin.Stat()
+		if statErr == nil && info.Mode()&os.ModeCharDevice != 0 {
+			return "", noop, fmt.Errorf("yz: stdin is a terminal; pipe a file in, or pass a path")
+		}
+		dir, path, err := share.SpoolStdin(os.Stdin)
+		if err != nil {
+			return "", noop, err
+		}
+		return path, func() { _ = os.RemoveAll(dir) }, nil
+	}
+	return arg, noop, nil
 }

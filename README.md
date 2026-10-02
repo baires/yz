@@ -75,7 +75,7 @@ Only the URL goes to stdout; progress, clipboard notices, and errors go to stder
 ## Usage & Options
 
 ```
-usage: yz [--signed] [--expires 24h] [--domain HOST] <file>
+usage: yz [--signed] [--expires 24h] [--domain HOST] [--clipboard] [file | -]
 ```
 
 | Flag | Description |
@@ -83,6 +83,9 @@ usage: yz [--signed] [--expires 24h] [--domain HOST] <file>
 | *(default)* | Public URL via your bucket's custom domain or `r2.dev` |
 | `--expires 2h` | Presigned URL that R2 rejects after the given duration (`1s`–`7d`) |
 | `--signed` | Force a presigned URL even when a public base is configured |
+| *(no file)* | Upload the image on the clipboard (macOS, or Linux with wl-paste or xclip) |
+| `-` | Read the file from stdin instead of a path |
+| `--clipboard` | Upload a copied file, image, or text (macOS) |
 | `--domain HOST` | Override the configured URL base for this share |
 | `yz list` | Show previous shares, newest first |
 | `yz version` | Print the version |
@@ -91,6 +94,9 @@ usage: yz [--signed] [--expires 24h] [--domain HOST] <file>
 yz --expires=2h secret_report.pdf      # expires automatically
 yz --signed internal-doc.docx          # presigned even with a public domain
 yz --domain=cdn.example.com banner.webp
+tar -c ./notes | yz -                  # upload stdin, no temp file of yours
+yz                                     # image currently on the clipboard
+yz --clipboard                         # macOS: copied file, image, or text
 yz list                                # previous shares, newest first
 ```
 
