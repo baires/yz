@@ -15,6 +15,12 @@ https://pub-yourbucket.r2.dev/3kK9Xw0Lp2QmZb8N/screenshot.png
 
 ## Installation
 
+### Homebrew (macOS)
+
+```bash
+brew install baires/tap/yz
+```
+
 ### Install script (macOS & Linux)
 
 ```bash
