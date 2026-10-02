@@ -20,6 +20,8 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 		switch args[0] {
 		case "setup":
 			return runSetup(env, os.Stdin, stderr)
+		case "list":
+			return runList(env, stdout, stderr)
 		case "version":
 			return runVersion(stdout)
 		}

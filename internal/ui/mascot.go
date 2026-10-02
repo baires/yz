@@ -76,13 +76,20 @@ func terminalHeader(title, subtitle string, state mascotState, frame, width, hei
 	return lipgloss.JoinHorizontal(lipgloss.Center, mascot(state, frame), "   ", text)
 }
 
+func scheduleMascot(delay time.Duration) tea.Cmd {
+	if !colorEnabled() {
+		return nil
+	}
+	return tea.Tick(delay, func(time.Time) tea.Msg { return mascotTick{} })
+}
+
 func (m setupModel) mascotTick() tea.Cmd {
-	if !colorEnabled() || m.summary != "" {
+	if m.summary != "" {
 		return nil
 	}
 	delay := 800 * time.Millisecond
 	if m.busy && mascotVisible(m.width, m.height) {
 		delay = 120 * time.Millisecond
 	}
-	return tea.Tick(delay, func(time.Time) tea.Msg { return mascotTick{} })
+	return scheduleMascot(delay)
 }
