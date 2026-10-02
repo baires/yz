@@ -7,6 +7,7 @@
 - **Unguessable keys**: files are uploaded under `<16-char random base62>/<filename>` prefixes.
 - **Custom domains & r2.dev**: automatic detection and configuration of managed `r2.dev` or custom domains.
 - **Time-bounded & signed shares**: `--expires` and `--signed` for presigned URLs.
+- **Local history**: `yz list` shows previous shares, newest first.
 
 ```bash
 $ yz screenshot.png
@@ -83,13 +84,17 @@ usage: yz [--signed] [--expires 24h] [--domain HOST] <file>
 | `--expires 2h` | Presigned URL that R2 rejects after the given duration (`1s`–`7d`) |
 | `--signed` | Force a presigned URL even when a public base is configured |
 | `--domain HOST` | Override the configured URL base for this share |
+| `yz list` | Show previous shares, newest first |
 | `yz version` | Print the version |
 
 ```bash
 yz --expires=2h secret_report.pdf      # expires automatically
 yz --signed internal-doc.docx          # presigned even with a public domain
 yz --domain=cdn.example.com banner.webp
+yz list                                # previous shares, newest first
 ```
+
+`yz list` prints each share's time, size, filename, expiry, and URL. On a terminal it is an interactive table: enter copies the selected link, `q` quits. Piped output stays plain text. History is stored locally in `~/.config/yz/shares.json` (`0600`). Presigned links, including the private-bucket fallback, are marked with their expiry.
 
 ![CLI help demo](docs/demos/help.gif)
 

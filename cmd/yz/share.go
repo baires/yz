@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/baires/yz/internal/config"
 	"github.com/baires/yz/internal/desktop"
+	"github.com/baires/yz/internal/history"
 	"github.com/baires/yz/internal/share"
 	"github.com/baires/yz/internal/ui"
 )
@@ -31,6 +33,7 @@ Share a file and get a link you can paste anywhere.
   yz --expires=1h report.pdf       Create a signed link that expires in an hour
   yz --domain=files.example.com photo.jpg
                                   Use a custom domain for this share
+  yz list                         Show previous shares
   yz version                      Show the installed version
 
 Links are copied to your clipboard automatically when available.
@@ -103,10 +106,12 @@ func runShare(args []string, env envConfig, stdout, stderr io.Writer) int {
 		hold := ui.Interactive(os.Stdin, stdout)
 		err := ui.RunUpload(ctx, os.Stdin, stderr, opts.Path, cfg.Bucket, hold, func(ctx context.Context, progress func(int64, int64)) (string, error) {
 			opts.Progress = progress
-			if err := share.Share(ctx, cfg, opts, &url); err != nil {
+			expires, err := share.Share(ctx, cfg, opts, &url)
+			if err != nil {
 				return "", err
 			}
 			target := strings.TrimSpace(url.String())
+			recordShare(env.ConfigDir, opts.Path, target, expires, stderr)
 			if !hold {
 				if _, err := io.Copy(stdout, &url); err != nil {
 					return "", err
@@ -130,7 +135,8 @@ func runShare(args []string, env envConfig, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
-	if err := share.Share(ctx, cfg, opts, &url); err != nil {
+	expiresAt, err := share.Share(ctx, cfg, opts, &url)
+	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			_, _ = fmt.Fprintln(stderr, "yz: interrupted")
 			return 130
@@ -139,12 +145,31 @@ func runShare(args []string, env envConfig, stdout, stderr io.Writer) int {
 		return 1
 	}
 	target := strings.TrimSpace(url.String())
+	recordShare(env.ConfigDir, opts.Path, target, expiresAt, stderr)
 	if _, err := io.Copy(stdout, &url); err != nil {
 		writeDiag(stderr, err.Error())
 		return 1
 	}
 	_, _ = fmt.Fprintln(stderr, desktop.ClipboardNotice(desktop.CopyURL(ctx, target)))
 	return 0
+}
+
+// recordShare appends the completed share to the local history. It is
+// best-effort: the share itself already succeeded, so a history write
+// failure only prints a warning.
+func recordShare(configDir, path, url string, expires *time.Time, stderr io.Writer) {
+	entry := history.Entry{
+		URL:       url,
+		File:      filepath.Base(path),
+		CreatedAt: time.Now(),
+		ExpiresAt: expires,
+	}
+	if info, err := os.Stat(path); err == nil {
+		entry.Size = info.Size()
+	}
+	if err := history.Add(configDir, entry); err != nil {
+		_, _ = fmt.Fprintln(stderr, "yz: warning: could not record share history:", err)
+	}
 }
 
 func writeDiag(stderr io.Writer, msg string) {

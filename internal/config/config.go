@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/baires/yz/internal/atomicfile"
 )
 
 // FileName is the config file name inside the config directory.
@@ -71,33 +73,17 @@ func Load(dir string) (*Config, error) {
 // never a truncated one. The file is mode 0600 and a missing config dir is
 // created with mode 0700.
 func Save(dir string, cfg *Config) error {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("yz: creating config dir %q: %w", dir, err)
-	}
 	cfg.SchemaVersion = SchemaVersion
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("yz: encoding config: %w", err)
 	}
-	tmp, err := os.CreateTemp(dir, ".config-*.tmp")
-	if err != nil {
+	if err := atomicfile.Write(dir, FileName, append(data, '\n')); err != nil {
+		var op *atomicfile.OpError
+		if errors.As(err, &op) && op.Op == "dir" {
+			return fmt.Errorf("yz: creating config dir %q: %w", dir, err)
+		}
 		return fmt.Errorf("yz: writing config in %q: %w", dir, err)
-	}
-	tmpName := tmp.Name()
-	_, err = tmp.Write(append(data, '\n'))
-	if err == nil {
-		err = tmp.Sync()
-	}
-	if closeErr := tmp.Close(); err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("yz: writing config in %q: %w", dir, err)
-	}
-	if err := os.Rename(tmpName, filepath.Join(dir, FileName)); err != nil {
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("yz: saving config in %q: %w", dir, err)
 	}
 	return nil
 }

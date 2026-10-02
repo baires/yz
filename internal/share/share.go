@@ -66,13 +66,15 @@ func SanitizeFilename(name string) string {
 
 // BuildURL determines the appropriate share URL based on configuration and flags.
 // Priority: --signed / --expires (presigned) > --domain > cfg.URLBase > presigned fallback.
-func BuildURL(cfg *config.Config, s3 r2.S3, key string, opts Options, now time.Time) (string, error) {
-	if opts.Signed || opts.HasExpires {
-		expiry := opts.Expires
-		if expiry <= 0 {
-			expiry = 24 * time.Hour
+// The returned time is when a presigned link stops working. It is nil for a public link.
+func BuildURL(cfg *config.Config, s3 r2.S3, key string, opts Options, now time.Time) (string, *time.Time, error) {
+	if expiry, ok := presignTTL(cfg, opts); ok {
+		raw, err := s3.PresignGet(cfg.Bucket, key, expiry, now)
+		if err != nil {
+			return "", nil, err
 		}
-		return s3.PresignGet(cfg.Bucket, key, expiry, now)
+		t := now.Add(expiry)
+		return raw, &t, nil
 	}
 
 	if opts.Domain != "" {
@@ -80,14 +82,23 @@ func BuildURL(cfg *config.Config, s3 r2.S3, key string, opts Options, now time.T
 		if !strings.HasPrefix(dom, "http://") && !strings.HasPrefix(dom, "https://") {
 			dom = "https://" + dom
 		}
-		return strings.TrimRight(dom, "/") + "/" + r2.URIEncode(key, false), nil
+		return strings.TrimRight(dom, "/") + "/" + r2.URIEncode(key, false), nil, nil
 	}
 
-	if cfg.URLBase != "" {
-		return strings.TrimRight(cfg.URLBase, "/") + "/" + r2.URIEncode(key, false), nil
-	}
+	return strings.TrimRight(cfg.URLBase, "/") + "/" + r2.URIEncode(key, false), nil, nil
+}
 
-	return s3.PresignGet(cfg.Bucket, key, 24*time.Hour, now)
+// presignTTL reports how long a link should be signed for. Public links,
+// those with a domain or URL base and no signing flag, do not expire.
+func presignTTL(cfg *config.Config, opts Options) (time.Duration, bool) {
+	if opts.Signed || opts.HasExpires || (opts.Domain == "" && cfg.URLBase == "") {
+		expiry := opts.Expires
+		if expiry <= 0 {
+			expiry = 24 * time.Hour
+		}
+		return expiry, true
+	}
+	return 0, false
 }
 
 func openInRoot(path string) (*os.File, os.FileInfo, error) {
@@ -120,10 +131,11 @@ func openInRoot(path string) (*os.File, os.FileInfo, error) {
 }
 
 // Share uploads the file at path and writes its share URL to w.
-func Share(ctx context.Context, cfg *config.Config, opts Options, w io.Writer) error {
+// The returned time is when the link stops working, or nil if it does not expire.
+func Share(ctx context.Context, cfg *config.Config, opts Options, w io.Writer) (*time.Time, error) {
 	f, stat, err := openInRoot(opts.Path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = f.Close() }()
 
@@ -136,7 +148,7 @@ func Share(ctx context.Context, cfg *config.Config, opts Options, w io.Writer) e
 		}
 	}
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("yz: seeking %q: %w", opts.Path, err)
+		return nil, fmt.Errorf("yz: seeking %q: %w", opts.Path, err)
 	}
 
 	if opts.Progress != nil {
@@ -161,7 +173,7 @@ func Share(ctx context.Context, cfg *config.Config, opts Options, w io.Writer) e
 			Progress:    progress,
 		})
 		if err != nil {
-			return err
+			return nil, err
 		}
 	} else {
 		body := io.Reader(f)
@@ -169,15 +181,16 @@ func Share(ctx context.Context, cfg *config.Config, opts Options, w io.Writer) e
 			body = newCountingReader(f, stat.Size(), opts.Progress)
 		}
 		if err := s3.PutObject(ctx, cfg.Bucket, key, body, stat.Size(), contentType); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	url, err := BuildURL(cfg, s3, key, opts, time.Now())
+	now := time.Now()
+	url, expires, err := BuildURL(cfg, s3, key, opts, now)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	_, _ = fmt.Fprintln(w, url)
-	return nil
+	return expires, nil
 }
