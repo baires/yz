@@ -82,11 +82,39 @@ func TestSetupCustomDomain(t *testing.T) {
 		dir, api, _, env := setupFixture(t)
 		api.CustomDomain, api.CustomEnabled, api.CustomActive = "cdn.example.com", true, true
 		api.ManagedEnabled = true
+		api.ZoneName = "example.com"
 		assertSetupSuccess(t, runYzInput(t, env, fakes.SetupInput, "setup"))
-		if loadSavedConfig(t, dir).URLBase != "https://cdn.example.com" {
+		cfg := loadSavedConfig(t, dir)
+		if cfg.URLBase != "https://cdn.example.com" {
 			t.Error("custom domain not selected")
 		}
-		assertCalls(t, api, domainCalls("photos"))
+		if cfg.SitesWorker == "" {
+			t.Error("setup did not record the sites Worker")
+		}
+		assertCalls(t, api, append(domainCalls("photos"),
+			"PUT /accounts/"+fakes.AccountID+"/workers/scripts/yz-sites",
+			"GET /zones?name=cdn.example.com", "GET /zones?name=example.com",
+			"GET /zones/"+fakes.ZoneID+"/workers/routes", "POST /zones/"+fakes.ZoneID+"/workers/routes"))
+		if len(api.Routes) != 1 || api.Routes[0]["pattern"] != "cdn.example.com/s/*" || api.Routes[0]["script"] != "yz-sites" {
+			t.Errorf("routes = %v", api.Routes)
+		}
+	})
+}
+
+func TestSetupSitesWorkerBestEffort(t *testing.T) {
+	scenario(t, "setup still succeeds when the sites Worker cannot deploy", func(t *testing.T) {
+		dir, api, _, env := setupFixture(t)
+		api.CustomDomain, api.CustomEnabled, api.CustomActive = "cdn.example.com", true, true
+		api.FailPath = "PUT /accounts/" + fakes.AccountID + "/workers/scripts/yz-sites"
+		api.Status = 500
+		res := runYzInput(t, env, fakes.SetupInput, "setup")
+		assertSetupSuccess(t, res)
+		if !strings.Contains(res.Stderr, "yz site will retry") {
+			t.Errorf("stderr = %q", res.Stderr)
+		}
+		if loadSavedConfig(t, dir).SitesWorker != "" {
+			t.Error("failed deploy recorded a Worker version")
+		}
 	})
 }
 

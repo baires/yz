@@ -17,6 +17,10 @@ func Run(ctx context.Context, opts Options, ui Interaction) (*config.Config, err
 	if err := configureR2(ctx, cfg, opts, ui); err != nil {
 		return nil, err
 	}
+	provisionSites(ctx, cfg, opts, ui)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	ui.Status(StepSave, "Saving")
 	if err := config.Save(opts.ConfigDir, cfg); err != nil {
 		ui.Notice(err.Error())

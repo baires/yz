@@ -87,6 +87,7 @@ usage: yz [--signed] [--expires 24h] [--domain HOST] [--clipboard] [file | -]
 | `-` | Read the file from stdin instead of a path |
 | `--clipboard` | Upload a copied file, image, or text (macOS) |
 | `--domain HOST` | Override the configured URL base for this share |
+| `yz site <dir\|zip>` | Publish a static site at `<domain>/s/<id>/` |
 | `yz list` | Show previous shares, newest first |
 | `yz version` | Print the version |
 
@@ -105,6 +106,17 @@ yz list                                # previous shares, newest first
 ![CLI help demo](docs/demos/help.gif)
 
 [Watch help as MP4](docs/demos/help.mp4). See [recording instructions](docs/demos/README.md) to regenerate the demos with VHS.
+
+## Static sites
+
+```bash
+$ yz site ./dist
+https://files.example.com/s/3kK9Xw0Lp2QmZb8N/
+```
+
+`yz site` uploads a folder (or a `.zip`; a single top-level folder is unwrapped) to R2 under `sites/<id>/`. It needs `index.html` at the site root and skips symlinks and OS junk like `.DS_Store`. A small Worker, `yz-sites`, is embedded in the binary and deployed to your account through the Cloudflare API (no wrangler or Node): it binds your bucket and routes `<your custom domain>/s/*`, serves `index.html` for directories, falls back to the root `index.html` for extension-less paths (SPA routing), and serves `404.html` when present.
+
+`yz setup` deploys the Worker when the bucket has a custom domain; otherwise the first `yz site` does. Sites require a custom domain on a zone in the same account: `r2.dev` hosts cannot run Workers. The login requests `workers-scripts.write`, `workers-routes.write`, and `zone.read` for this; logins saved before this release need `yz setup` once more to grant them.
 
 ## Security
 
