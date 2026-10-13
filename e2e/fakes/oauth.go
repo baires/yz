@@ -151,7 +151,7 @@ func (o *OAuthServer) handleAuth(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unknown client_id", http.StatusBadRequest)
 		return
 	}
-	if q.Get("scope") != "memberships.read workers-r2.read workers-r2.write workers-scripts.edit workers-routes.write zone.read offline_access" {
+	if q.Get("scope") != "memberships.read workers-r2.read workers-r2.write workers-scripts.admin workers-routes.write zone.read offline_access" {
 		http.Error(w, "required R2 and refresh scopes missing", http.StatusBadRequest)
 		return
 	}

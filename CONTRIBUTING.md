@@ -95,7 +95,7 @@ name and the registered loopback redirect ports (8974–8976). Register your own
 OAuth client in the Cloudflare dashboard with redirect URIs
 `http://127.0.0.1:8974/callback` through `8976` and the scopes
 `memberships.read`, `workers-r2.read`, `workers-r2.write`,
-`workers-scripts.edit`, `workers-routes.write`, `zone.read`, `offline_access`,
+`workers-scripts.admin`, `workers-routes.write`, `zone.read`, `offline_access`,
 then point the binary at it — either set `YZ_OAUTH_CLIENT_ID` or change
 `DefaultClientID`.
 
