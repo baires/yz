@@ -196,6 +196,10 @@ func (s *S3Server) handle(w http.ResponseWriter, r *http.Request) {
 			s.handleHead(w, r)
 			return
 		}
+		if r.Method == http.MethodGet && r.URL.Query().Get("list-type") == "2" {
+			s.handleList(w, r)
+			return
+		}
 	}
 
 	if after, ok := strings.CutPrefix(path, bucketPrefix+"/"); ok {
@@ -218,6 +222,9 @@ func (s *S3Server) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		case r.Method == http.MethodDelete && uploadID != "":
 			s.handleAbort(w, r, key)
+			return
+		case r.Method == http.MethodDelete:
+			s.handleDelete(w, r, key)
 			return
 		case r.Method == http.MethodGet:
 			s.handleGet(w, r, key)
@@ -765,4 +772,61 @@ func NewPublicHost(t *testing.T, s *S3Server) *httptest.Server {
 	}))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// ListPageSize caps keys per ListObjectsV2 page so tests exercise pagination.
+var ListPageSize = 2
+
+func (s *S3Server) handleList(w http.ResponseWriter, r *http.Request) {
+	if !s.verifySignature(w, r, nil) {
+		return
+	}
+	q := r.URL.Query()
+	prefix := q.Get("prefix")
+	s.mu.Lock()
+	keys := []string{}
+	for k := range s.objects {
+		if strings.HasPrefix(k, prefix) {
+			keys = append(keys, k)
+		}
+	}
+	s.mu.Unlock()
+	sort.Strings(keys)
+	start := 0
+	if tok := q.Get("continuation-token"); tok != "" {
+		start, _ = strconv.Atoi(tok)
+	}
+	end := min(start+ListPageSize, len(keys))
+	var b strings.Builder
+	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?><ListBucketResult>`)
+	for _, k := range keys[start:end] {
+		b.WriteString("<Contents><Key>")
+		_ = xml.EscapeText(&b, []byte(k))
+		b.WriteString("</Key></Contents>")
+	}
+	if end < len(keys) {
+		fmt.Fprintf(&b, "<IsTruncated>true</IsTruncated><NextContinuationToken>%d</NextContinuationToken>", end)
+	} else {
+		b.WriteString("<IsTruncated>false</IsTruncated>")
+	}
+	b.WriteString("</ListBucketResult>")
+	w.Header().Set("Content-Type", "application/xml")
+	_, _ = io.WriteString(w, b.String())
+}
+
+func (s *S3Server) handleDelete(w http.ResponseWriter, r *http.Request, key string) {
+	if !s.verifySignature(w, r, nil) {
+		return
+	}
+	s.mu.Lock()
+	delete(s.objects, key)
+	s.mu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// PutObjectDirect seeds an object without a signed upload.
+func (s *S3Server) PutObjectDirect(key string, data []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.objects[key] = S3Object{Data: data, UploadedAt: s.clock}
 }
