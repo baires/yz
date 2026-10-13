@@ -18,9 +18,10 @@ Leave the fixture server running on loopback port 8766. In another terminal, fro
 ```sh
 vhs docs/demos/setup.tape
 vhs docs/demos/upload.tape
+vhs docs/demos/site.tape
 vhs docs/demos/help.tape
 ```
 
-Stop the server with Ctrl+C afterward. Each tape initializes its own ignored fixture configuration. The upload fixture is `hello.txt`; objects stay in the server's memory. The fixtures are for presentation, not authentication or signing tests. The existing E2E fixtures test those behaviors.
+Stop the server with Ctrl+C afterward. Each tape initializes its own ignored fixture configuration. The upload fixture is `hello.txt` and the site fixture is the `site/` folder; objects, the fake `yz-sites` Worker deploy, and its route stay in the server's memory. The site demo publishes `site/`, opens `yz list`, and deletes the site with `d` then `y`. The fixtures are for presentation, not authentication or signing tests. The existing E2E fixtures test those behaviors.
 
 The videos use Menlo and Catppuccin Mocha.
