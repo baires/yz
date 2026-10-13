@@ -40,7 +40,7 @@ func runList(env envConfig, stdout, stderr io.Writer) int {
 			}
 		}
 		_, _ = fmt.Fprintf(stdout, "%s  %8s  %s%s\n    %s\n",
-			history.FormatTime(e.CreatedAt), ui.HumanSize(e.Size), ui.SafeText(e.File), status, e.URL)
+			history.FormatTime(e.CreatedAt), ui.HumanSize(e.Size), ui.SafeText(e.Label()), status, e.URL)
 	}
 	return 0
 }

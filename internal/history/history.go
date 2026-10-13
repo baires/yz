@@ -21,8 +21,12 @@ const FileName = "shares.json"
 // MaxEntries caps the stored history; oldest entries are dropped.
 const MaxEntries = 200
 
+// KindSite marks a static site; file shares leave Kind empty.
+const KindSite = "site"
+
 // Entry is one recorded share.
 type Entry struct {
+	Kind      string     `json:"kind,omitempty"`
 	URL       string     `json:"url"`
 	File      string     `json:"file"`
 	Size      int64      `json:"size"`
@@ -87,4 +91,15 @@ func Add(dir string, e Entry) error {
 		return fmt.Errorf("yz: writing history in %q: %w", dir, err)
 	}
 	return nil
+}
+
+// IsSite reports whether the entry is a static site.
+func (e Entry) IsSite() bool { return e.Kind == KindSite }
+
+// Label is the name shown by yz list; sites end in a slash.
+func (e Entry) Label() string {
+	if e.IsSite() {
+		return e.File + "/"
+	}
+	return e.File
 }

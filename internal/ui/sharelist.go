@@ -53,7 +53,7 @@ func newShareListModel(entries []history.Entry) shareListModel {
 		rows[i] = table.Row{
 			history.FormatTime(e.CreatedAt),
 			HumanSize(e.Size),
-			SafeText(e.File),
+			SafeText(e.Label()),
 			expiryLabel(e, now),
 		}
 		urls[i] = e.URL
