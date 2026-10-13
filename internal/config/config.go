@@ -33,6 +33,9 @@ type Config struct {
 	TokenExpiry   time.Time `json:"token_expiry"`
 	S3AccessKeyID string    `json:"s3_access_key_id,omitempty"`
 	S3Secret      string    `json:"s3_secret,omitempty"`
+	// SitesWorker is the version of the yz-sites Worker last deployed for
+	// this bucket and host; empty until setup or yz site deploys it.
+	SitesWorker string `json:"sites_worker,omitempty"`
 }
 
 // Load reads and validates the config in dir. A missing file is not an

@@ -26,6 +26,11 @@ import (
 // it via YZ_OAUTH_CLIENT_ID.
 const DefaultClientID = "551dee5d77aa970489cf0c5170dd2545"
 
+// Scopes are requested on every login: R2 for uploads, memberships for
+// account discovery, Workers scripts/routes and zone read to deploy the
+// yz-sites Worker on the bucket's custom domain, and refresh tokens.
+const Scopes = "memberships.read workers-r2.read workers-r2.write workers-scripts.admin workers-routes.write zone.read offline_access"
+
 // ErrInvalidGrant means the refresh token must be replaced through login.
 var ErrInvalidGrant = errors.New("saved login is no longer valid")
 
@@ -84,7 +89,7 @@ func (c Client) Login(ctx context.Context, out io.Writer, timeout time.Duration)
 	query := url.Values{
 		"client_id": {c.clientID()}, "response_type": {"code"}, "redirect_uri": {redirect},
 		"state": {state}, "code_challenge": {base64.RawURLEncoding.EncodeToString(sum[:])},
-		"code_challenge_method": {"S256"}, "scope": {"memberships.read workers-r2.read workers-r2.write offline_access"},
+		"code_challenge_method": {"S256"}, "scope": {Scopes},
 	}
 	type callback struct {
 		code string

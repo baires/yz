@@ -124,7 +124,7 @@ func openInRoot(path string) (*os.File, os.FileInfo, error) {
 	}
 	if stat.IsDir() {
 		_ = f.Close()
-		return nil, nil, fmt.Errorf("yz: %q is a directory; sharing directories is not supported", path)
+		return nil, nil, fmt.Errorf("yz: %q is a directory; publish it as a static site with: yz site %s", path, path)
 	}
 
 	return f, stat, nil

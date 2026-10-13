@@ -23,7 +23,8 @@ func TestTerminalSetupLogin(t *testing.T) {
 			"YZ_R2_ENDPOINT": s3.URL(), "YZ_OAUTH_BASE_URL": oauth.URL(),
 		}
 		run := startTerminal(t, env, "setup")
-		run.Resize(40, 24)
+		// Tall enough for the header plus the wrapped authorize URL.
+		run.Resize(40, 32)
 		run.Await("yz  /  setup")
 		view := run.Await("Open this URL")
 		if !spinnerVisible(view) {
@@ -247,9 +248,6 @@ func recoverAuthorizeURL(t *testing.T, view string) string {
 			continue
 		}
 		b.WriteString(line)
-		if strings.Contains(line, "scope=") {
-			break
-		}
 	}
 	return b.String()
 }

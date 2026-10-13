@@ -2,6 +2,7 @@ package fakes
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -41,7 +42,14 @@ type CFAPI struct {
 	AccountsPaged      bool
 	AccountScopeNeeded bool
 	Delay              time.Duration
+	// Workers deployment fixtures.
+	ZoneName     string
+	ScriptBodies [][]byte
+	Routes       []map[string]string
 }
+
+// ZoneID is the fake zone that owns ZoneName.
+const ZoneID = "22222222222222222222222222222222"
 
 func NewCFAPI(t *testing.T) *CFAPI {
 	t.Helper()
@@ -135,6 +143,35 @@ func (f *CFAPI) handle(w http.ResponseWriter, r *http.Request) {
 	var result any
 	cursor := ""
 	switch {
+	case r.Method == "PUT" && r.URL.Path == "/accounts/"+AccountID+"/workers/scripts/yz-sites":
+		if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+			http.Error(w, "expected multipart", http.StatusBadRequest)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		f.ScriptBodies = append(f.ScriptBodies, body)
+		result = map[string]string{"id": "yz-sites"}
+	case r.Method == "GET" && r.URL.Path == "/zones":
+		zones := []map[string]string{}
+		if f.ZoneName != "" && r.URL.Query().Get("name") == f.ZoneName {
+			zones = append(zones, map[string]string{"id": ZoneID, "name": f.ZoneName})
+		}
+		result = zones
+	case r.URL.Path == "/zones/"+ZoneID+"/workers/routes" && r.Method == "GET":
+		routes := f.Routes
+		if routes == nil {
+			routes = []map[string]string{}
+		}
+		result = routes
+	case r.URL.Path == "/zones/"+ZoneID+"/workers/routes" && r.Method == "POST":
+		var route map[string]string
+		if json.NewDecoder(r.Body).Decode(&route) != nil {
+			http.Error(w, "bad route", http.StatusBadRequest)
+			return
+		}
+		route["id"] = "route1"
+		f.Routes = append(f.Routes, route)
+		result = route
 	case r.Method == "GET" && r.URL.Path == base:
 		buckets := []map[string]string{}
 		names := f.BucketNames

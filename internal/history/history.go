@@ -8,8 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/baires/yz/internal/atomicfile"
@@ -21,8 +24,12 @@ const FileName = "shares.json"
 // MaxEntries caps the stored history; oldest entries are dropped.
 const MaxEntries = 200
 
+// KindSite marks a static site; file shares leave Kind empty.
+const KindSite = "site"
+
 // Entry is one recorded share.
 type Entry struct {
+	Kind      string     `json:"kind,omitempty"`
 	URL       string     `json:"url"`
 	File      string     `json:"file"`
 	Size      int64      `json:"size"`
@@ -74,7 +81,13 @@ func Add(dir string, e Entry) error {
 	if len(entries) > MaxEntries {
 		entries = entries[:MaxEntries]
 	}
+	return save(dir, entries)
+}
 
+func save(dir string, entries []Entry) error {
+	if entries == nil {
+		entries = []Entry{}
+	}
 	data, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
 		return fmt.Errorf("yz: encoding history: %w", err)
@@ -87,4 +100,62 @@ func Add(dir string, e Entry) error {
 		return fmt.Errorf("yz: writing history in %q: %w", dir, err)
 	}
 	return nil
+}
+
+// IsSite reports whether the entry is a static site.
+func (e Entry) IsSite() bool { return e.Kind == KindSite }
+
+// Label is the name shown by yz list; sites end in a slash.
+func (e Entry) Label() string {
+	if e.IsSite() {
+		return e.File + "/"
+	}
+	return e.File
+}
+
+var (
+	fileKeyPattern = regexp.MustCompile(`^[0-9A-Za-z]{16}/[^/]+$`)
+	siteIDPattern  = regexp.MustCompile(`^[0-9A-Za-z]{16}$`)
+)
+
+// Target returns the R2 object key (file share) or key prefix (site) this
+// entry points at. Presigned URLs carry the bucket as the first path
+// segment; public URLs put the key at the root.
+func (e Entry) Target(bucket string) (key string, isPrefix bool, err error) {
+	u, err := url.Parse(e.URL)
+	if err != nil {
+		return "", false, fmt.Errorf("yz: cannot parse share URL")
+	}
+	p := strings.TrimPrefix(u.Path, "/")
+	if u.Query().Get("X-Amz-Signature") != "" {
+		p = strings.TrimPrefix(p, bucket+"/")
+	}
+	if e.IsSite() {
+		id, ok := strings.CutPrefix(p, "s/")
+		id = strings.TrimSuffix(id, "/")
+		if !ok || !siteIDPattern.MatchString(id) {
+			return "", false, fmt.Errorf("yz: cannot find the site id in %q", e.URL)
+		}
+		return "sites/" + id + "/", true, nil
+	}
+	if !fileKeyPattern.MatchString(p) {
+		return "", false, fmt.Errorf("yz: cannot find the object key in %q", e.URL)
+	}
+	return p, false, nil
+}
+
+// Remove drops entries matching url and created time from the history.
+func Remove(dir, url string, created time.Time) error {
+	entries, err := Load(dir)
+	if err != nil {
+		return err
+	}
+	kept := entries[:0]
+	for _, e := range entries {
+		if e.URL == url && e.CreatedAt.Equal(created) {
+			continue
+		}
+		kept = append(kept, e)
+	}
+	return save(dir, kept)
 }

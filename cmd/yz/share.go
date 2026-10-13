@@ -36,6 +36,7 @@ Share a file and get a link you can paste anywhere.
   yz --expires=1h report.pdf      Create a signed link that expires in an hour
   yz --domain=files.example.com photo.jpg
                                   Use a custom domain for this share
+  yz site ./dist                  Publish a static site folder or .zip
   yz list                         Show previous shares
   yz version                      Show the installed version
 
