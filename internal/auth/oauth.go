@@ -29,7 +29,7 @@ const DefaultClientID = "551dee5d77aa970489cf0c5170dd2545"
 // Scopes are requested on every login: R2 for uploads, memberships for
 // account discovery, Workers scripts/routes and zone read to deploy the
 // yz-sites Worker on the bucket's custom domain, and refresh tokens.
-const Scopes = "memberships.read workers-r2.read workers-r2.write workers-scripts.write workers-routes.write zone.read offline_access"
+const Scopes = "memberships.read workers-r2.read workers-r2.write workers-scripts.edit workers-routes.write zone.read offline_access"
 
 // ErrInvalidGrant means the refresh token must be replaced through login.
 var ErrInvalidGrant = errors.New("saved login is no longer valid")

@@ -116,7 +116,7 @@ https://files.example.com/s/3kK9Xw0Lp2QmZb8N/
 
 `yz site` uploads a folder (or a `.zip`; a single top-level folder is unwrapped) to R2 under `sites/<id>/`. It needs `index.html` at the site root and skips symlinks and OS junk like `.DS_Store`. A small Worker, `yz-sites`, is embedded in the binary and deployed to your account through the Cloudflare API (no wrangler or Node): it binds your bucket and routes `<your custom domain>/s/*`, serves `index.html` for directories, falls back to the root `index.html` for extension-less paths (SPA routing), and serves `404.html` when present.
 
-`yz setup` deploys the Worker when the bucket has a custom domain; otherwise the first `yz site` does. Sites require a custom domain on a zone in the same account: `r2.dev` hosts cannot run Workers. The login requests `workers-scripts.write`, `workers-routes.write`, and `zone.read` for this; logins saved before this release need `yz setup` once more to grant them.
+`yz setup` deploys the Worker when the bucket has a custom domain; otherwise the first `yz site` does. Sites require a custom domain on a zone in the same account: `r2.dev` hosts cannot run Workers. The login requests `workers-scripts.edit`, `workers-routes.write`, and `zone.read` for this; logins saved before this release need `yz setup` once more to grant them.
 
 ## Security
 
