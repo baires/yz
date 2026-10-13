@@ -101,7 +101,7 @@ yz --clipboard                         # macOS: copied file, image, or text
 yz list                                # previous shares, newest first
 ```
 
-`yz list` prints each share's time, size, filename, expiry, and URL. On a terminal it is an interactive table: enter copies the selected link, `q` quits. Piped output stays plain text. History is stored locally in `~/.config/yz/shares.json` (`0600`). Presigned links, including the private-bucket fallback, are marked with their expiry.
+`yz list` prints each share's time, size, filename, expiry, and URL. On a terminal it is an interactive table: enter copies the selected link, `d` (or Delete) asks for confirmation and then deletes the share from R2 and history (a site removes everything under `sites/<id>/`; the Worker stays), `q` quits. Piped output stays plain text. History is stored locally in `~/.config/yz/shares.json` (`0600`). Presigned links, including the private-bucket fallback, are marked with their expiry.
 
 ![CLI help demo](docs/demos/help.gif)
 
