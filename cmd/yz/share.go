@@ -39,6 +39,9 @@ Share a file and get a link you can paste anywhere.
   yz site ./dist                  Publish a static site folder or .zip
   yz list                         Show previous shares
   yz version                      Show the installed version
+  yz update                       Install the latest release
+  yz update --check               Check for a newer release
+  yz config auto-update on        Install updates in the background
 
 Links are copied to your clipboard automatically when available.
 After an interactive upload, press o to open the link or enter to finish.

@@ -36,6 +36,10 @@ type Config struct {
 	// SitesWorker is the version of the yz-sites Worker last deployed for
 	// this bucket and host; empty until setup or yz site deploys it.
 	SitesWorker string `json:"sites_worker,omitempty"`
+	// AutoUpdate installs a newer release in the background after a command.
+	// Off unless set here or YZ_AUTO_UPDATE=1. Package-manager installs are
+	// never replaced.
+	AutoUpdate bool `json:"auto_update,omitempty"`
 }
 
 // Load reads and validates the config in dir. A missing file is not an

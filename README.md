@@ -45,6 +45,25 @@ chmod +x yz_*
 mv yz_* /usr/local/bin/yz
 ```
 
+## Updates
+
+Release builds look for a newer version at most once every 24 hours. Startup only reads a cache file, `~/.config/yz/update.json` (mode `0600`). The GitHub request runs in the background while the command runs, with a short timeout, and never runs for a development build, when stdout or stderr is not a terminal, when `CI` is set, or when `YZ_NO_UPDATE_CHECK=1`.
+
+When a newer release is already known, yz prints one line to stderr after the command:
+
+```text
+yz 1.4.0 is available, run yz update
+```
+
+```bash
+yz update           # download the asset for this OS, verify SHA-256, replace this binary
+yz update --check   # report only
+```
+
+Each GitHub release includes `checksums.txt` next to assets named `yz_<tag>_<os>_<arch>`. `yz update` checks the downloaded file against that manifest before it replaces the binary. A Homebrew install prints `brew upgrade yz` instead of overwriting itself. A `go install` copy prints `go install github.com/baires/yz/cmd/yz@latest`.
+
+Background installs are off by default. Turn them on with `yz config auto-update on` or `YZ_AUTO_UPDATE=1`. The next time a newer release is available, yz downloads it, verifies the checksum, and swaps the binary in after the command so the following run uses it, then prints `yz updated to 1.4.0`. Package-manager installs are never replaced.
+
 ## Quickstart
 
 ### Before you start: enable R2
@@ -114,6 +133,9 @@ usage: yz [--signed] [--expires 24h] [--domain HOST] [--clipboard] [file | -]
 | `yz site <dir\|zip>` | Publish a static site at `<domain>/s/<id>/` |
 | `yz list` | Show previous shares, newest first |
 | `yz version` | Print the version |
+| `yz update` | Install the latest release after verifying its SHA-256 |
+| `yz update --check` | Report whether a newer release exists |
+| `yz config auto-update on` | Download newer releases in the background |
 
 ```bash
 yz --expires=2h secret_report.pdf      # expires automatically
@@ -152,7 +174,7 @@ https://files.example.com/s/3kK9Xw0Lp2QmZb8N/
 - **Streaming uploads**: files stream from disk to R2 without buffering whole payloads in memory.
 - **Path confinement**: `os.OpenRoot` prevents symlink escapes outside the target directory.
 - **Strict permissions**: config is saved `0600` and world-readable configs are refused.
-- **No telemetry**: `yz` talks only to Cloudflare endpoints.
+- **No usage telemetry**: sharing talks only to Cloudflare. A release check may contact GitHub at most once a day; set `YZ_NO_UPDATE_CHECK=1` to turn that off.
 
 See [SECURITY.md](SECURITY.md) for how to report vulnerabilities.
 
@@ -163,6 +185,10 @@ See [SECURITY.md](SECURITY.md) for how to report vulnerabilities.
 - `YZ_OAUTH_CLIENT_ID`: override the built-in OAuth client ID (for forks that register their own Cloudflare OAuth client)
 - `YZ_API_BASE_URL`: override Cloudflare Client v4 API endpoint
 - `YZ_R2_ENDPOINT`: override the R2 S3 endpoint
+- `YZ_NO_UPDATE_CHECK`: set to `1` to skip the background release check
+- `YZ_AUTO_UPDATE`: set to `1` to install a newer release in the background
+- `YZ_GITHUB_BASE`: release host (default `https://github.com`; tests may use `http://127.0.0.1`)
+- `YZ_REPO`: GitHub `owner/name` that publishes releases (default `baires/yz`)
 
 ## Contributing
 
