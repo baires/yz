@@ -26,6 +26,9 @@ func (m setupModel) keyboardHelp() string {
 	if m.summary != "" {
 		return ""
 	}
+	if m.pending != nil && m.pending.kind == promptEnable {
+		return "enter or o open dashboard · ctrl+c cancel"
+	}
 	if m.pending == nil || m.tiny() {
 		return "ctrl+c cancel"
 	}

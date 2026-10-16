@@ -5,9 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/baires/yz/internal/config"
 	"github.com/baires/yz/internal/r2"
+)
+
+const (
+	r2EnablePoll = 3 * time.Second
+	// Shown while the user is choosing an account, before bucket listing.
+	r2AccountHint   = "Heads up: R2 must be enabled on this account before you pick a bucket. The free tier needs a one-time activation and a card."
+	r2EnableExplain = "R2 isn't enabled on this account yet. Activate it once in the dashboard. The free tier is enough, but Cloudflare requires a card."
+	r2EnableWait    = "Setup continues to the bucket step as soon as R2 is enabled. Press ctrl+c to cancel."
 )
 
 func configureR2(ctx context.Context, cfg *config.Config, opts Options, ui Interaction) error {
@@ -45,7 +54,7 @@ func configureR2(ctx context.Context, cfg *config.Config, opts Options, ui Inter
 		return errors.New("account ID must be 32 hexadecimal characters; run yz setup")
 	}
 	ui.Status(StepBucket, "Loading buckets")
-	buckets, err := api.Buckets(ctx, account)
+	buckets, err := loadBuckets(ctx, api, account, ui)
 	if err != nil {
 		return err
 	}
@@ -208,14 +217,55 @@ func selectAccount(ctx context.Context, accounts []r2.Account, ui Interaction) (
 	}
 	if len(accounts) == 1 {
 		ui.Status(StepAccount, "Using Cloudflare account: "+accounts[0].Name)
-		ui.Notice("Using Cloudflare account: " + accounts[0].Name)
+		ui.Notice("Using Cloudflare account: " + accounts[0].Name + "\n" + r2AccountHint)
 		return accounts[0].ID, nil
 	}
 	ui.Status(StepAccount, "Choose an account")
-	ui.Notice("Cloudflare accounts:")
+	ui.Notice("Cloudflare accounts:\n" + r2AccountHint)
 	choices := make([]Choice, 0, len(accounts))
 	for _, account := range accounts {
 		choices = append(choices, Choice{Value: account.ID, Title: account.Name, Description: account.ID})
 	}
 	return ui.Choose(ctx, "Choose an account number:", choices)
+}
+
+func r2DashboardURL(account string) string {
+	return "https://dash.cloudflare.com/" + account + "/r2/overview"
+}
+
+// loadBuckets lists buckets, and when R2 is not activated yet it waits on the
+// enable step until listing succeeds. Cloudflare reports that state as HTTP
+// 403 code 10042 ("Please enable R2 through the Cloudflare Dashboard.").
+func loadBuckets(ctx context.Context, api r2.API, account string, ui Interaction) ([]string, error) {
+	buckets, err := api.Buckets(ctx, account)
+	if !errors.Is(err, r2.ErrR2NotEnabled) {
+		return buckets, err
+	}
+	return pollUntilR2Enabled(ctx, api, account, ui)
+}
+
+func pollUntilR2Enabled(ctx context.Context, api r2.API, account string, ui Interaction) ([]string, error) {
+	dashboard := r2DashboardURL(account)
+	ui.Status(StepEnable, "Waiting for R2 to be enabled")
+	ui.Notice(r2EnableExplain)
+	ui.Notice(r2EnableWait)
+	ui.Notice("Dashboard: " + dashboard)
+	ui.OfferOpen(ctx, dashboard)
+	ticker := time.NewTicker(r2EnablePoll)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+			buckets, err := api.Buckets(ctx, account)
+			if errors.Is(err, r2.ErrR2NotEnabled) {
+				continue
+			}
+			if err != nil && ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			return buckets, err
+		}
+	}
 }

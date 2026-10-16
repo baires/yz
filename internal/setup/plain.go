@@ -88,6 +88,8 @@ func (p *plain) Retry(_ context.Context, msg string) (bool, error) {
 	return false, errors.New(msg)
 }
 
+func (p *plain) OfferOpen(context.Context, string) {}
+
 func (p *plain) keepsPlainErrors() {}
 
 func (p *plain) line(ctx context.Context, label string, secret bool) (string, error) {

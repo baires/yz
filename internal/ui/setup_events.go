@@ -43,6 +43,14 @@ type retryMsg struct {
 	reply chan choiceResult
 }
 
+type enableMsg struct {
+	url string
+}
+
+type dashboardOpenMsg struct {
+	err error
+}
+
 type doneMsg struct {
 	cfg *config.Config
 	err error
@@ -98,6 +106,10 @@ func (a *adapter) Retry(ctx context.Context, msg string) (bool, error) {
 		return false, err
 	}
 	return result.value == "yes", nil
+}
+
+func (a *adapter) OfferOpen(_ context.Context, dashboardURL string) {
+	a.send(enableMsg{url: dashboardURL})
 }
 
 func (a *adapter) send(msg tea.Msg) {

@@ -1,8 +1,11 @@
 package e2e
 
 import (
+	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -72,6 +75,9 @@ func TestTerminalSetupSelection(t *testing.T) {
 		if strings.Contains(stripSGR(singleView), "Choose an account") {
 			t.Fatalf("single account showed a list: %q", singleView)
 		}
+		if !strings.Contains(singleView, "R2 must be enabled") {
+			t.Fatalf("account hint missing: %q", singleView)
+		}
 		single.Interrupt()
 		single.Wait()
 
@@ -96,6 +102,9 @@ func TestTerminalSetupSelection(t *testing.T) {
 		accounts := run.Await(workID)
 		if !strings.Contains(accounts, fakes.AccountID) {
 			t.Fatalf("account IDs missing: %q", accounts)
+		}
+		if !strings.Contains(accounts, "R2 must be enabled") {
+			t.Fatalf("account hint missing from the account list: %q", accounts)
 		}
 		run.Send("j")
 		run.Send("\r")
@@ -215,6 +224,76 @@ func TestTerminalSetupCancel(t *testing.T) {
 			t.Fatalf("network cancel exit = %d, stderr %q", networkRes.ExitCode, networkRes.Stderr)
 		}
 		network.AssertTerminalRestored()
+	})
+}
+
+func TestTerminalSetupR2Enable(t *testing.T) {
+	scenario(t, "terminal setup opens the R2 dashboard and continues once R2 is enabled", func(t *testing.T) {
+		dir, api, _, env := setupFixture(t)
+		api.Configure(func(a *fakes.CFAPI) {
+			a.R2DisabledCalls = 2
+			a.ManagedEnabled = true
+		})
+		fakeDesktop(t, env)
+		browserLog := filepath.Join(t.TempDir(), "browser")
+		script := filepath.Join(t.TempDir(), "browser-open")
+		body := fmt.Sprintf("#!/bin/sh\nprintf '%%s' \"$1\" > %s\n", strconv.Quote(browserLog))
+		if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		env["BROWSER"] = script
+		run := startTerminal(t, env, "setup")
+		run.Resize(100, 32)
+		view := run.Await("Waiting for R2 to be enabled")
+		flat := strings.ReplaceAll(stripSGR(view), "\n", "")
+		dashboard := "https://dash.cloudflare.com/" + fakes.AccountID + "/r2/overview"
+		for _, text := range []string{"Enable R2", "isn't enabled", "card", "ctrl+c", "Open the R2 dashboard", dashboard} {
+			if !strings.Contains(flat, text) {
+				t.Errorf("enable step missing %q: %q", text, view)
+			}
+		}
+		run.Send("\r")
+		run.Await("Opened the R2 dashboard")
+		opened, err := os.ReadFile(browserLog)
+		if err != nil || string(opened) != dashboard {
+			t.Fatalf("browser got %q, err %v", opened, err)
+		}
+		if _, err := os.Stat(env["YZ_TEST_OPENED"]); err == nil {
+			t.Fatal("OS launcher ran even though BROWSER handled the URL")
+		}
+		run.AwaitFor("Choose a bucket", 20000)
+		run.Send("\r")
+		run.Await("Access Key")
+		run.Send(fakes.AccessKey + "\r")
+		run.Await("Secret Access Key")
+		run.Send(fakes.SecretKey + "\r")
+		res := run.Wait()
+		if res.ExitCode != 0 {
+			t.Fatalf("exit = %d, stderr %q", res.ExitCode, res.Stderr)
+		}
+		if loadSavedConfig(t, dir).Bucket != "photos" {
+			t.Fatal("setup did not resume onto the bucket")
+		}
+	})
+}
+
+func TestTerminalSetupR2EnableCancel(t *testing.T) {
+	scenario(t, "ctrl+c while waiting for R2 cancels setup", func(t *testing.T) {
+		dir, api, _, env := setupFixture(t)
+		api.Configure(func(a *fakes.CFAPI) { a.R2DisabledCalls = 4 })
+		before := loadSavedConfig(t, dir).Bucket
+		run := startTerminal(t, env, "setup")
+		run.Await("Waiting for R2 to be enabled")
+		run.Await("ctrl+c")
+		run.Interrupt()
+		res := run.Wait()
+		if res.ExitCode != 130 {
+			t.Fatalf("exit = %d, stderr %q", res.ExitCode, res.Stderr)
+		}
+		if loadSavedConfig(t, dir).Bucket != before {
+			t.Fatal("cancel saved a bucket")
+		}
+		run.AssertTerminalRestored()
 	})
 }
 

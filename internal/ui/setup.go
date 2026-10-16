@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/baires/yz/internal/config"
+	"github.com/baires/yz/internal/desktop"
 	"github.com/baires/yz/internal/setup"
 
 	"github.com/charmbracelet/x/ansi"
@@ -27,6 +28,7 @@ const (
 	promptText
 	promptConfirm
 	promptRetry
+	promptEnable
 )
 
 type pendingPrompt struct {
@@ -38,25 +40,27 @@ type pendingPrompt struct {
 }
 
 type setupModel struct {
-	cancel      context.CancelFunc
-	events      <-chan tea.Msg
-	step        setup.Step
-	activity    string
-	width       int
-	height      int
-	spinner     spinner.Model
-	list        list.Model
-	input       textinput.Model
-	pending     *pendingPrompt
-	busy        bool
-	inputError  string
-	history     []string
-	copy        string
-	work        tea.Cmd
-	result      *config.Config
-	err         error
-	summary     string
-	mascotFrame int
+	cancel           context.CancelFunc
+	events           <-chan tea.Msg
+	step             setup.Step
+	activity         string
+	width            int
+	height           int
+	spinner          spinner.Model
+	list             list.Model
+	input            textinput.Model
+	pending          *pendingPrompt
+	busy             bool
+	inputError       string
+	history          []string
+	copy             string
+	work             tea.Cmd
+	result           *config.Config
+	err              error
+	summary          string
+	mascotFrame      int
+	dashboardURL     string
+	openingDashboard bool
 }
 
 func RunSetup(ctx context.Context, opts setup.Options, input io.Reader, output io.Writer) (*config.Config, error) {
@@ -149,17 +153,40 @@ func (m setupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case nil:
 		return m, nil
 	case statusMsg:
+		if m.pending != nil && m.pending.kind == promptEnable && msg.step != setup.StepEnable {
+			m.pending = nil
+			m.dashboardURL = ""
+			m.openingDashboard = false
+		}
 		wasBusy := m.busy
 		if m.step != msg.step {
 			m.copy = ""
 		}
 		m.step = msg.step
 		m.activity = msg.text
-		m.busy = m.pending == nil
+		m.busy = m.pending == nil || (m.pending.kind == promptEnable && m.step == setup.StepEnable)
 		if m.busy && !wasBusy {
 			return m, tea.Batch(m.listen(), m.spinner.Tick)
 		}
 		return m, m.listen()
+	case enableMsg:
+		m.showEnable(msg.url)
+		if m.busy {
+			return m, m.listen()
+		}
+		m.busy = true
+		return m, tea.Batch(m.listen(), m.spinner.Tick)
+	case dashboardOpenMsg:
+		m.openingDashboard = false
+		if m.step != setup.StepEnable {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.remember("Couldn't open the browser. Use the dashboard link above.")
+		} else {
+			m.remember("Opened the R2 dashboard. This screen continues once R2 is enabled.")
+		}
+		return m, nil
 	case noticeMsg:
 		if m.step == setup.StepSave {
 			return m, m.listen()
@@ -261,6 +288,12 @@ func (m setupModel) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.cancel()
 		return m, tea.Quit
 	}
+	if m.pending != nil && m.pending.kind == promptEnable {
+		switch msg.String() {
+		case "enter", "o", "O":
+			return m.openDashboard()
+		}
+	}
 	if m.pending != nil && m.pending.kind == promptText && msg.String() == "ctrl+u" {
 		m.input.SetValue("")
 		m.inputError = ""
@@ -326,6 +359,31 @@ func (m setupModel) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *setupModel) showEnable(url string) {
+	m.dashboardURL = url
+	m.openingDashboard = false
+	m.pending = &pendingPrompt{kind: promptEnable, prompt: "Open the R2 dashboard"}
+	m.busy = true
+	m.list = newChoiceList([]setup.Choice{{
+		Value:       "open",
+		Title:       "Open the R2 dashboard",
+		Description: "Free tier · a card is required · setup continues when R2 is on",
+	}}, m.width, m.height)
+	m.list.SetFilteringEnabled(false)
+	m.resize()
+}
+
+func (m setupModel) openDashboard() (tea.Model, tea.Cmd) {
+	if m.openingDashboard || m.dashboardURL == "" {
+		return m, nil
+	}
+	m.openingDashboard = true
+	url := m.dashboardURL
+	return m, func() tea.Msg {
+		return dashboardOpenMsg{err: desktop.OpenURL(context.Background(), url)}
+	}
+}
+
 func (m *setupModel) openList(kind promptKind, prompt string, choices []setup.Choice, reply chan choiceResult) {
 	prompt = strings.TrimSuffix(prompt, " number:")
 	m.pending = &pendingPrompt{kind: kind, prompt: prompt, reply: reply}
@@ -349,7 +407,7 @@ func (m *setupModel) finish(result choiceResult) {
 func (m *setupModel) resize() {
 	width := max(m.width, 1)
 	m.input.SetWidth(max(1, width-2))
-	if m.pending == nil || (m.pending.kind != promptChoose && m.pending.kind != promptConfirm && m.pending.kind != promptRetry) {
+	if m.pending == nil || (m.pending.kind != promptChoose && m.pending.kind != promptConfirm && m.pending.kind != promptRetry && m.pending.kind != promptEnable) {
 		return
 	}
 	height := 6
@@ -408,7 +466,7 @@ func (m setupModel) View() tea.View {
 	}
 	if m.tiny() && m.pending != nil {
 		b.WriteString("\nresize the terminal to continue\n")
-	} else if m.pending != nil && (m.pending.kind == promptChoose || m.pending.kind == promptConfirm || m.pending.kind == promptRetry) {
+	} else if m.pending != nil && (m.pending.kind == promptChoose || m.pending.kind == promptConfirm || m.pending.kind == promptRetry || m.pending.kind == promptEnable) {
 		b.WriteString("\n")
 		b.WriteString(m.list.View())
 		b.WriteString("\n")
@@ -438,17 +496,24 @@ func (m setupModel) View() tea.View {
 	return tea.NewView(b.String())
 }
 
+type setupTrailStep struct {
+	id    setup.Step
+	label string
+}
+
 func (m setupModel) trail() string {
-	steps := []struct {
-		id    setup.Step
-		label string
-	}{
+	steps := []setupTrailStep{
 		{setup.StepLogin, "Login"},
 		{setup.StepAccount, "Account"},
-		{setup.StepBucket, "Bucket"},
-		{setup.StepCredentials, "Credentials"},
-		{setup.StepAccess, "Access"},
 	}
+	if m.step == setup.StepEnable {
+		steps = append(steps, setupTrailStep{setup.StepEnable, "Enable R2"})
+	}
+	steps = append(steps,
+		setupTrailStep{setup.StepBucket, "Bucket"},
+		setupTrailStep{setup.StepCredentials, "Credentials"},
+		setupTrailStep{setup.StepAccess, "Access"},
+	)
 	current := 0
 	if m.step == setup.StepSave {
 		current = len(steps)
