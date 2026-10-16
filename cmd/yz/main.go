@@ -13,9 +13,12 @@ func main() {
 }
 
 // Execute dispatches to the requested command and returns the process exit
-// code: 0 success, 1 runtime error, 2 usage error.
+// code: 0 success, 1 runtime error, 2 usage error. An update notice, when
+// one is due, is written to stderr after the command returns.
 func Execute(args []string, stdout, stderr io.Writer) int {
 	env := readEnv()
+	chk := beginUpdateCheck(args, env, stdout, stderr)
+	defer chk.finish(stderr)
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		switch args[0] {
 		case "setup":
@@ -26,6 +29,10 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 			return runList(env, stdout, stderr)
 		case "version":
 			return runVersion(stdout)
+		case "update":
+			return runUpdate(args[1:], env, stdout, stderr)
+		case "config":
+			return runConfig(args[1:], env, stdout, stderr)
 		}
 	}
 	return runShare(args, env, stdout, stderr)

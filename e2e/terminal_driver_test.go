@@ -66,6 +66,11 @@ type terminalRun struct {
 
 func startTerminal(t *testing.T, env map[string]string, args ...string) *terminalRun {
 	t.Helper()
+	return startTerminalBin(t, binPath, env, args...)
+}
+
+func startTerminalBin(t *testing.T, bin string, env map[string]string, args ...string) *terminalRun {
+	t.Helper()
 	python, err := exec.LookPath("python3")
 	if err != nil {
 		t.Fatalf("python3 is required for terminal tests: %v", err)
@@ -76,7 +81,7 @@ func startTerminal(t *testing.T, env map[string]string, args ...string) *termina
 	}
 	stdoutPath := filepath.Join(t.TempDir(), "stdout")
 	driver := filepath.Join(filepath.Dir(file), "pty_driver.py")
-	cmdArgs := append([]string{driver, "--stdout-file", stdoutPath, "--"}, append([]string{binPath}, args...)...)
+	cmdArgs := append([]string{driver, "--stdout-file", stdoutPath, "--"}, append([]string{bin}, args...)...)
 	cmd := exec.Command(python, cmdArgs...)
 	cmd.Env = terminalEnv(t, env)
 	stdin, err := cmd.StdinPipe()

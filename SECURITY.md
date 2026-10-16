@@ -17,7 +17,9 @@ You can expect an acknowledgement within a few days. Please include the version
   with `0600` permissions and refuses to load world-readable configs.
 - The R2 API token you provide needs only **Object Read & Write** on your
   bucket. Use a scoped token, never your Cloudflare global API key.
-- `yz` sends no telemetry. It talks only to Cloudflare endpoints (OAuth, the
-  Client v4 API, and your R2 S3 endpoint).
+- `yz` sends no usage telemetry. Sharing talks only to Cloudflare endpoints
+  (OAuth, the Client v4 API, and your R2 S3 endpoint). A release check may
+  contact GitHub at most once a day; set `YZ_NO_UPDATE_CHECK=1` to turn that
+  off. The cache for that check is `~/.config/yz/update.json`, mode `0600`.
 - Public shares are public: anyone with the link can download the file until
   you delete it. Use `--expires` or `--signed` for sensitive files.

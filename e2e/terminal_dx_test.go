@@ -32,7 +32,7 @@ func TestTerminalSetupIntroduction(t *testing.T) {
 func TestHelpGettingStarted(t *testing.T) {
 	scenario(t, "help offers setup and sharing examples", func(t *testing.T) {
 		res := runYz(t, nil, "--help")
-		for _, text := range []string{"yz setup", "yz screenshot.png", "--expires=1h"} {
+		for _, text := range []string{"yz setup", "yz screenshot.png", "--expires=1h", "yz update", "yz config auto-update on"} {
 			if !strings.Contains(res.Stderr, text) {
 				t.Fatalf("help missing %q: %q", text, res.Stderr)
 			}
