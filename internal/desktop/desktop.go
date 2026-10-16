@@ -49,12 +49,63 @@ func CopyURL(ctx context.Context, target string) error {
 	return lastErr
 }
 
-// OpenURL opens an HTTP(S) link using the OS browser launcher.
+// OpenURL opens an HTTP(S) link. When BROWSER is set it is a colon-separated
+// list of commands: a %s placeholder is replaced with the URL, otherwise the
+// URL is appended. If those commands fail, the OS launcher is used
+// (open, xdg-open, or explorer.exe).
 func OpenURL(ctx context.Context, target string) error {
 	u, err := url.Parse(target)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
 		return errors.New("invalid browser URL")
 	}
+	commands := launchCommands(target)
+	if len(commands) == 0 {
+		return errors.New("browser opening unavailable on this OS")
+	}
+	var lastErr error
+	for _, args := range commands {
+		attempt, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := exec.CommandContext(attempt, args[0], args[1:]...).Run()
+		cancel()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+	}
+	return lastErr
+}
+
+// browserFromEnv parses the BROWSER convention used by sensible-browser: a
+// colon-separated list, with an optional %s for the URL.
+func browserFromEnv(target string) [][]string {
+	raw := strings.TrimSpace(os.Getenv("BROWSER"))
+	if raw == "" {
+		return nil
+	}
+	var commands [][]string
+	for part := range strings.SplitSeq(raw, ":") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		var args []string
+		if strings.Contains(part, "%s") {
+			args = strings.Fields(strings.ReplaceAll(part, "%s", target))
+		} else {
+			args = append(strings.Fields(part), target)
+		}
+		if len(args) == 0 || args[0] == "" {
+			continue
+		}
+		commands = append(commands, args)
+	}
+	return commands
+}
+
+func defaultLauncher(target string) []string {
 	var name string
 	switch runtime.GOOS {
 	case "darwin":
@@ -64,11 +115,17 @@ func OpenURL(ctx context.Context, target string) error {
 	case "linux", "freebsd", "openbsd", "netbsd", "dragonfly":
 		name = "xdg-open"
 	default:
-		return errors.New("browser opening unavailable on this OS")
+		return nil
 	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	return exec.CommandContext(ctx, name, target).Run()
+	return []string{name, target}
+}
+
+func launchCommands(target string) [][]string {
+	commands := browserFromEnv(target)
+	if fallback := defaultLauncher(target); fallback != nil {
+		commands = append(commands, fallback)
+	}
+	return commands
 }
 
 // ClipboardNotice reports copy success without treating a desktop failure as

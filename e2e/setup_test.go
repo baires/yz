@@ -353,6 +353,73 @@ func TestSetupRerun(t *testing.T) {
 	})
 }
 
+func TestSetupR2NotEnabledThenReady(t *testing.T) {
+	scenario(t, "setup waits until R2 is enabled", func(t *testing.T) {
+		dir, api, _, env := setupFixture(t)
+		// Two disabled lists (the probe and the first poll), then buckets succeed.
+		api.Configure(func(a *fakes.CFAPI) { a.R2DisabledCalls = 2 })
+		res := runYzInput(t, env, fakes.SetupInput, "setup")
+		assertSetupSuccess(t, res)
+		dash := "https://dash.cloudflare.com/" + fakes.AccountID + "/r2/overview"
+		for _, text := range []string{"isn't enabled", "card", "ctrl+c", dash, "setup complete"} {
+			if !strings.Contains(res.Stderr, text) {
+				t.Errorf("stderr missing %q: %q", text, res.Stderr)
+			}
+		}
+		if strings.Contains(res.Stderr, "missing the R2 scope") {
+			t.Fatalf("not-enabled path reported a scope error: %q", res.Stderr)
+		}
+		if loadSavedConfig(t, dir).Bucket != "photos" {
+			t.Fatal("setup did not resume after R2 was enabled")
+		}
+		failed := []string{"GET " + bucketPath, "GET " + bucketPath}
+		assertCalls(t, api, append(failed, append(domainCalls("photos"), "PUT "+bucketPath+"/photos/domains/managed")...))
+	})
+}
+
+func TestSetupR2AccessDenied(t *testing.T) {
+	cases := []struct {
+		name, message, apiMessage string
+		code                      int
+	}{
+		{name: "missing_scope", message: "missing the R2 scope", apiMessage: "Insufficient permissions for the requested operation.", code: 10003},
+		{name: "auth_error", message: "log in again", apiMessage: "Authentication error", code: 10000},
+		{name: "account_mismatch", message: "cannot access that Cloudflare account", apiMessage: "Unauthorized to access requested resource", code: 9109},
+		{name: "unroutable_account", message: "cannot access that Cloudflare account", apiMessage: "Could not route to /accounts/x/r2/buckets, perhaps your object identifier is invalid?", code: 7003},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scenario(t, "setup R2 access: "+tc.name, func(t *testing.T) {
+				dir, api, _, env := setupFixture(t)
+				api.Configure(func(a *fakes.CFAPI) {
+					a.FailPath = "GET " + bucketPath
+					a.ErrorCode = tc.code
+					a.ErrorMessage = tc.apiMessage
+				})
+				before, err := os.ReadFile(filepath.Join(dir, config.FileName))
+				if err != nil {
+					t.Fatal(err)
+				}
+				res := runYzInput(t, env, fakes.SetupInput, "setup")
+				if res.ExitCode != 1 || res.Stdout != "" || !strings.Contains(res.Stderr, tc.message) {
+					t.Fatalf("result = %+v; want %q", res, tc.message)
+				}
+				if strings.Contains(res.Stderr, "isn't enabled") || strings.Contains(res.Stderr, "HTTP 403") {
+					t.Fatalf("access error used the wrong message: %q", res.Stderr)
+				}
+				after, err := os.ReadFile(filepath.Join(dir, config.FileName))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(before, after) {
+					t.Error("access failure changed saved config")
+				}
+				assertCalls(t, api, []string{"GET " + bucketPath})
+			})
+		})
+	}
+}
+
 func TestSetupAPIUnreachable(t *testing.T) {
 	scenario(t, "setup API connection failure", func(t *testing.T) {
 		dir, api, _, env := setupFixture(t)

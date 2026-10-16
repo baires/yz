@@ -47,13 +47,37 @@ mv yz_* /usr/local/bin/yz
 
 ## Quickstart
 
+### Before you start: enable R2
+
+R2 has to be activated once on the Cloudflare account you want to use. The free tier is enough, but Cloudflare asks you to accept the terms and add a payment method (a card) in the dashboard before the API will list buckets. Until then, bucket calls fail with HTTP 403, error code `10042`, and the message `Please enable R2 through the Cloudflare Dashboard.`
+
+Open the R2 overview for that account. `yz setup` prints this link after you pick one:
+
+```
+https://dash.cloudflare.com/<account_id>/r2/overview
+```
+
+`yz setup` lists buckets before it asks you to choose one. When it sees error 10042, it stops on an Enable R2 step, explains the one-time activation, and offers to open the dashboard (`$BROWSER` when that is set, otherwise the system browser). It checks again every few seconds and continues at the bucket step as soon as R2 is enabled. You do not need to quit and run setup again. Press ctrl+c to cancel.
+
+The account step also reminds you that R2 must be enabled before you pick a bucket.
+
+#### Troubleshooting a 403 during setup
+
+Cloudflare uses the same HTTP 403 for three different problems. `yz setup` reads the error code in the JSON body ([R2 error codes](https://developers.cloudflare.com/r2/api/error-codes/)) and tells them apart:
+
+- **R2 is not enabled** — `10042` NotEntitled, message `Please enable R2 through the Cloudflare Dashboard.` Activate R2 at the link above. Setup waits and continues on its own.
+- **The login is missing the R2 scope** — `10003` AccessDenied, or `10000` Authentication error when the token lacks permission for the call. Run `yz setup` and log in again so the token includes `workers-r2.read`.
+- **The account does not match the login** — `9109` (unauthorized to access that account) or `7003` (the account id did not route). Run `yz setup` and choose an account this login can access.
+
+Any other HTTP 403 still asks you to check account access and R2 permissions, then run `yz setup` again.
+
 ### 1. One-time setup
 
 ```bash
 yz setup
 ```
 
-Setup walks you through: browser OAuth login to Cloudflare → picking your account and R2 bucket → choosing a public URL base (existing custom domain, managed `r2.dev`, or private) → pasting an R2 API token with Object Read & Write. Credentials are validated and saved to `~/.config/yz/config.json` with `0600` permissions.
+Setup walks you through: browser OAuth login to Cloudflare → picking your account (with a reminder to enable R2) and R2 bucket → choosing a public URL base (existing custom domain, managed `r2.dev`, or private) → pasting an R2 API token with Object Read & Write. If R2 is not enabled yet, setup waits on the dashboard step instead of failing. Credentials are validated and saved to `~/.config/yz/config.json` with `0600` permissions.
 
 ![Interactive setup demo](docs/demos/setup.gif)
 

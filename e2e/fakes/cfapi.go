@@ -21,17 +21,26 @@ const (
 // CFAPI serves documented wire shapes, independently of production types.
 // Options are set before starting the CLI; Calls and mutations are synchronized.
 type CFAPI struct {
-	srv                *httptest.Server
-	mu                 sync.Mutex
-	calls              []string
-	BucketNames        []string
-	CustomDomain       string
-	CustomEnabled      bool
-	CustomActive       bool
-	ManagedEnabled     bool
-	ManagedDomain      string
-	FailPath           string
-	Status             int
+	srv            *httptest.Server
+	mu             sync.Mutex
+	calls          []string
+	BucketNames    []string
+	CustomDomain   string
+	CustomEnabled  bool
+	CustomActive   bool
+	ManagedEnabled bool
+	ManagedDomain  string
+	FailPath       string
+	Status         int
+	// ErrorCode, with FailPath, returns a Cloudflare JSON error envelope
+	// instead of a plain status. Status defaults to 403. ErrorMessage is
+	// errors[0].message.
+	ErrorCode    int
+	ErrorMessage string
+	// R2DisabledCalls makes the next N bucket lists return Cloudflare 10042
+	// (R2 not enabled: "Please enable R2 through the Cloudflare Dashboard.").
+	// Later lists succeed, so a poll can observe R2 become enabled.
+	R2DisabledCalls    int
 	Unsuccessful       bool
 	Malformed          bool
 	MalformedResult    bool
@@ -105,6 +114,14 @@ func (f *CFAPI) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if call == f.FailPath {
+		if f.ErrorCode != 0 {
+			status := f.Status
+			if status == 0 {
+				status = http.StatusForbidden
+			}
+			writeAPIError(w, status, f.ErrorCode, f.ErrorMessage)
+			return
+		}
 		if f.Status != 0 {
 			http.Error(w, "forced failure", f.Status)
 			return
@@ -173,6 +190,11 @@ func (f *CFAPI) handle(w http.ResponseWriter, r *http.Request) {
 		f.Routes = append(f.Routes, route)
 		result = route
 	case r.Method == "GET" && r.URL.Path == base:
+		if f.R2DisabledCalls > 0 {
+			f.R2DisabledCalls--
+			writeAPIError(w, http.StatusForbidden, 10042, "Please enable R2 through the Cloudflare Dashboard.")
+			return
+		}
 		buckets := []map[string]string{}
 		names := f.BucketNames
 		if f.Paged {
@@ -222,4 +244,14 @@ func (f *CFAPI) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "result": result, "result_info": map[string]string{"cursor": cursor}})
+}
+
+func writeAPIError(w http.ResponseWriter, status, code int, message string) {
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"success":  false,
+		"errors":   []map[string]any{{"code": code, "message": message}},
+		"messages": []any{},
+		"result":   nil,
+	})
 }

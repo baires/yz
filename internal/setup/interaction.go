@@ -7,6 +7,7 @@ type Step string
 const (
 	StepLogin       Step = "login"
 	StepAccount     Step = "account"
+	StepEnable      Step = "enable"
 	StepBucket      Step = "bucket"
 	StepCredentials Step = "credentials"
 	StepAccess      Step = "access"
@@ -44,4 +45,7 @@ type Interaction interface {
 	Text(context.Context, TextRequest) (string, error)
 	ConfirmPublic(context.Context) (bool, error)
 	Retry(context.Context, string) (bool, error)
+	// OfferOpen shows a way to open a dashboard URL without blocking. Plain
+	// mode has already printed the URL and ignores this.
+	OfferOpen(context.Context, string)
 }

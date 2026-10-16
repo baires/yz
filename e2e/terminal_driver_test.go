@@ -115,7 +115,7 @@ func terminalEnv(t *testing.T, env map[string]string) []string {
 	merged := map[string]string{}
 	for _, kv := range os.Environ() {
 		key, val, found := splitEnv(kv)
-		if !found || key == "NO_COLOR" || key == "TERM" {
+		if !found || key == "NO_COLOR" || key == "TERM" || key == "BROWSER" {
 			continue
 		}
 		merged[key] = val

@@ -77,6 +77,9 @@ func TestAccountDiscovery(t *testing.T) {
 					if tc.name == "single" && strings.Contains(res.Stderr, "Choose an account") {
 						t.Error("single account not auto-selected")
 					}
+					if !strings.Contains(res.Stderr, "R2 must be enabled") {
+						t.Error("account step missing R2 hint")
+					}
 					if tc.name != "single" && !strings.Contains(res.Stderr, "Work") {
 						t.Error("account names missing")
 					}

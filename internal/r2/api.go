@@ -78,10 +78,129 @@ type responseInfo struct {
 
 var ErrAccountReadRequired = errors.New("memberships.read permission required")
 
+// Cloudflare's R2 REST API uses these codes on HTTP 403 responses from
+// /accounts/{id}/r2/buckets. 10042 and 10003 are documented at
+// https://developers.cloudflare.com/r2/api/error-codes/ (NotEntitled and
+// AccessDenied). Wrangler surfaces 10042 as "Please enable R2 through the
+// Cloudflare Dashboard." 10000 is the Authentication error Cloudflare returns
+// when the token is missing the permission for that call. 9109 means the
+// token cannot access the account, and 7003 means the account id did not route
+// ("perhaps your object identifier is invalid").
+const (
+	codeNotEntitled          = 10042
+	codeAccessDenied         = 10003
+	codeAuthError            = 10000
+	codeUnauthorizedResource = 9109
+	codeAccountRoute         = 7003
+)
+
+// ErrR2NotEnabled means the account has not activated R2.
+var ErrR2NotEnabled = errors.New("R2 is not enabled on this Cloudflare account")
+
+// ErrR2ScopeRequired means the token cannot call the R2 API.
+var ErrR2ScopeRequired = errors.New("R2 access denied; this login is missing the R2 scope (workers-r2.read). Run yz setup and log in again")
+
+// ErrAccountMismatch means the account id is not one this token can access.
+var ErrAccountMismatch = errors.New("this login cannot access that Cloudflare account. Run yz setup and choose an account it can use")
+
 type httpStatusError int
 
 func (e httpStatusError) Error() string {
 	return fmt.Sprintf("Cloudflare API returned HTTP %d; check account access and R2 permissions, then run yz setup", e)
+}
+
+type apiErrorItem struct {
+	code    int
+	message string
+}
+
+// apiError is a non-2xx Cloudflare JSON envelope. Its Error text matches
+// httpStatusError so callers that only need the status stay stable; bucket
+// listing classifies the code separately.
+type apiError struct {
+	status int
+	items  []apiErrorItem
+}
+
+func (e *apiError) Error() string {
+	return httpStatusError(e.status).Error()
+}
+
+func parseAPIError(status int, body io.Reader) error {
+	data, err := io.ReadAll(io.LimitReader(body, 1<<20))
+	if err != nil || len(bytes.TrimSpace(data)) == 0 {
+		return httpStatusError(status)
+	}
+	var envelope struct {
+		Errors []struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if json.Unmarshal(data, &envelope) != nil || len(envelope.Errors) == 0 {
+		return httpStatusError(status)
+	}
+	items := make([]apiErrorItem, 0, len(envelope.Errors))
+	for _, item := range envelope.Errors {
+		if item.Code == 0 && item.Message == "" {
+			continue
+		}
+		items = append(items, apiErrorItem{code: item.Code, message: item.Message})
+	}
+	if len(items) == 0 {
+		return httpStatusError(status)
+	}
+	return &apiError{status: status, items: items}
+}
+
+func responseStatus(err error) (int, bool) {
+	if status, ok := errors.AsType[httpStatusError](err); ok {
+		return int(status), true
+	}
+	if failure, ok := errors.AsType[*apiError](err); ok {
+		return failure.status, true
+	}
+	return 0, false
+}
+
+func r2NotEnabledText(message string) bool {
+	return strings.Contains(strings.ToLower(message), "please enable r2")
+}
+
+func accountMismatchText(message string) bool {
+	lower := strings.ToLower(message)
+	return strings.Contains(lower, "could not route") ||
+		strings.Contains(lower, "object identifier is invalid") ||
+		strings.Contains(lower, "unauthorized to access requested resource")
+}
+
+// classifyBucketError distinguishes "activate R2" from a missing R2 scope and
+// from an account id this token cannot access. Other failures keep the
+// generic HTTP status message.
+func classifyBucketError(err error) error {
+	failure, ok := errors.AsType[*apiError](err)
+	if !ok {
+		return err
+	}
+	mismatch, scope := false, false
+	for _, item := range failure.items {
+		if item.code == codeNotEntitled || r2NotEnabledText(item.message) {
+			return ErrR2NotEnabled
+		}
+		if item.code == codeUnauthorizedResource || item.code == codeAccountRoute || accountMismatchText(item.message) {
+			mismatch = true
+		}
+		if item.code == codeAccessDenied || item.code == codeAuthError {
+			scope = true
+		}
+	}
+	if mismatch {
+		return ErrAccountMismatch
+	}
+	if scope {
+		return ErrR2ScopeRequired
+	}
+	return err
 }
 
 func (c API) request(ctx context.Context, call apiRequest, target any) (responseInfo, error) {
@@ -111,7 +230,7 @@ func (c API) request(ctx context.Context, call apiRequest, target any) (response
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return responseInfo{}, httpStatusError(resp.StatusCode)
+		return responseInfo{}, parseAPIError(resp.StatusCode, resp.Body)
 	}
 	var envelope struct {
 		Success *bool           `json:"success"`
@@ -152,8 +271,7 @@ func (c API) Accounts(ctx context.Context) ([]Account, error) {
 		var batch []Account
 		info, err := c.request(ctx, apiRequest{method: http.MethodGet, path: path}, &batch)
 		if err != nil {
-			var status httpStatusError
-			if errors.As(err, &status) && (status == 401 || status == 403) {
+			if code, ok := responseStatus(err); ok && (code == 401 || code == 403) {
 				return nil, ErrAccountReadRequired
 			}
 			return nil, err
@@ -222,7 +340,7 @@ func (c API) Buckets(ctx context.Context, account string) ([]string, error) {
 		}
 		info, err := c.request(ctx, apiRequest{method: http.MethodGet, path: path}, &result)
 		if err != nil {
-			return nil, err
+			return nil, classifyBucketError(err)
 		}
 		if result.Buckets == nil {
 			return nil, errors.New("invalid Cloudflare bucket result; run yz setup")
