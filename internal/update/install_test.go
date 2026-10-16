@@ -36,6 +36,25 @@ func TestInstallMethod(t *testing.T) {
 			t.Errorf("InstallMethod(%s) = %v, want brew", path, got)
 		}
 	}
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "gopath")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(link, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	exe := filepath.Join(bin, "yz")
+	if err := os.WriteFile(exe, []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOBIN", "")
+	t.Setenv("GOPATH", real)
+	if got := InstallMethod(exe); got != MethodGo {
+		t.Fatalf("symlinked GOPATH/bin = %v", got)
+	}
+
 	if got := InstallMethod(filepath.Join(t.TempDir(), "yz")); got != MethodDirect {
 		t.Fatalf("direct = %v", got)
 	}

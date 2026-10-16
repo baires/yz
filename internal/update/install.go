@@ -27,9 +27,9 @@ func InstallMethod(exe string) Method {
 	if looksBrew(exe) || looksBrew(resolveExe(exe)) {
 		return MethodBrew
 	}
-	dir := filepath.Clean(filepath.Dir(resolveExe(exe)))
+	dir := filepath.Dir(exe)
 	for _, bin := range goBinDirs() {
-		if filepath.Clean(bin) == dir {
+		if sameDir(dir, bin) {
 			return MethodGo
 		}
 	}
@@ -108,6 +108,34 @@ func resolveExe(path string) string {
 		return path
 	}
 	return resolved
+}
+
+// sameDir reports whether two directories name the same location. macOS
+// temp paths sit under /var, which is a symlink to /private/var, so a string
+// compare of GOPATH/bin against the resolved executable misses go install.
+func sameDir(a, b string) bool {
+	a = filepath.Clean(a)
+	b = filepath.Clean(b)
+	if a == b {
+		return true
+	}
+	ar, aerr := filepath.EvalSymlinks(a)
+	br, berr := filepath.EvalSymlinks(b)
+	if aerr == nil && berr == nil && filepath.Clean(ar) == filepath.Clean(br) {
+		return true
+	}
+	if aerr == nil && filepath.Clean(ar) == b {
+		return true
+	}
+	if berr == nil && filepath.Clean(br) == a {
+		return true
+	}
+	ai, astat := os.Stat(a)
+	bi, bstat := os.Stat(b)
+	if astat != nil || bstat != nil {
+		return false
+	}
+	return os.SameFile(ai, bi)
 }
 
 func goBinDirs() []string {
