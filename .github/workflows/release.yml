@@ -12,6 +12,9 @@ jobs:
     permissions:
       contents: write
       pull-requests: read
+    outputs:
+      created-release: ${{ steps.release-train.outputs.created-release }}
+      release-tag: ${{ steps.release-train.outputs.release-tag }}
     concurrency:
       group: release-${{ github.ref }}
       cancel-in-progress: false
@@ -30,6 +33,7 @@ jobs:
           git config --local user.email '${{ github.actor }}@users.noreply.github.com'
 
       - uses: WillAbides/release-train@v3.9.0
+        id: release-train
         with:
           create-release: true
           release-refs: master
@@ -44,3 +48,15 @@ jobs:
             style=semver:none
             breaking change=semver:breaking
           pre-tag-hook: bash scripts/release-hook.sh
+
+  # release-train publishes with GITHUB_TOKEN, which does not start workflows
+  # listening for release: published. require_token is true only when this
+  # run created a release. homebrew-tap.yml still listens for that event for
+  # releases created outside this workflow (for example from the GitHub UI).
+  notify-homebrew-tap:
+    needs: release
+    uses: ./.github/workflows/homebrew-tap.yml
+    secrets: inherit
+    with:
+      tag_name: ${{ needs.release.outputs.release-tag }}
+      require_token: ${{ needs.release.outputs.created-release == 'true' }}

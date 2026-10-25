@@ -1,0 +1,97 @@
+# Notifies baires/homebrew-tap when a stable vX.Y.Z release is published.
+#
+# HOMEBREW_TAP_TOKEN is a fine-grained PAT with Contents: Read and write on
+# baires/homebrew-tap only (that permission allows repository_dispatch).
+# Metadata: Read-only is selected automatically. Store it as an Actions secret
+# on this repository. Do not commit the token.
+#
+# Runs that did not publish a release (pull requests, pushes that do not cut
+# a release) log and succeed when the secret is unset. A published release
+# fails this job when the secret is unset. Prereleases and tags other than
+# vX.Y.Z are not dispatched.
+
+name: Notify Homebrew tap
+
+on:
+  release:
+    types: [published]
+  workflow_call:
+    inputs:
+      tag_name:
+        description: Tag that was published, when called from the release workflow
+        required: true
+        type: string
+      prerelease:
+        description: Whether that release is a prerelease
+        required: false
+        type: boolean
+        default: false
+      require_token:
+        description: Fail when HOMEBREW_TAP_TOKEN is unset because a release was published
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Decide whether to notify the Homebrew tap
+        id: gate
+        env:
+          # String 'true' or 'false'. A release event always requires the token.
+          # workflow_call passes require_token only after release-train creates a release.
+          REQUIRE_TOKEN: ${{ github.event_name == 'release' && 'true' || (inputs.require_token && 'true' || 'false') }}
+          TAG_NAME: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag_name }}
+          PRERELEASE: ${{ github.event_name == 'release' && github.event.release.prerelease || inputs.prerelease }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        shell: bash
+        run: |
+          set -eu
+
+          # CI and pull requests must not fail the release check when the tap
+          # token has not been configured, and must not dispatch either.
+          if [ "$REQUIRE_TOKEN" != "true" ]; then
+            if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+              echo "HOMEBREW_TAP_TOKEN is not set; skipping Homebrew tap dispatch."
+            else
+              echo "Skipping Homebrew tap dispatch: this run did not publish a release."
+            fi
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "::error::A release was published (${TAG_NAME:-unknown tag}), but HOMEBREW_TAP_TOKEN is not set, so baires/homebrew-tap was not notified. Create a fine-grained PAT with Contents read and write on baires/homebrew-tap (Metadata read-only comes with it) and add it as the HOMEBREW_TAP_TOKEN Actions secret."
+            exit 1
+          fi
+
+          if [ "$PRERELEASE" = "true" ]; then
+            echo "Skipping Homebrew tap dispatch: ${TAG_NAME} is a prerelease."
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Match the whole tag. A line-oriented check would accept a
+          # stable version followed by extra output lines.
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Skipping Homebrew tap dispatch: ${TAG_NAME:-<empty>} is not a stable semver tag (vX.Y.Z)."
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "dispatch=true" >> "$GITHUB_OUTPUT"
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "Notifying baires/homebrew-tap of ${TAG_NAME}."
+
+      - name: Dispatch yz-release
+        if: steps.gate.outputs.dispatch == 'true'
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          repository: baires/homebrew-tap
+          event-type: yz-release
+          client-payload: ${{ format('{{"tag_name":"{0}"}}', steps.gate.outputs.tag_name) }}

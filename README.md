@@ -22,6 +22,8 @@ https://pub-yourbucket.r2.dev/3kK9Xw0Lp2QmZb8N/screenshot.png
 brew install baires/tap/yz
 ```
 
+Publishing a stable release (`vX.Y.Z`) updates the [Homebrew tap](https://github.com/baires/homebrew-tap) immediately, so `Formula/yz.rb` does not wait for the tap's hourly poll. Prereleases are skipped.
+
 ### Install script (macOS & Linux)
 
 ```bash

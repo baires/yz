@@ -67,6 +67,13 @@ downloads.
 `breaking change` are accepted aliases. An unlabeled PR fails the Release
 check. Do not tag releases by hand.
 
+A stable release (`vX.Y.Z`) also notifies the Homebrew tap with a
+`repository_dispatch` event named `yz-release`. That step needs the
+`HOMEBREW_TAP_TOKEN` Actions secret: a fine-grained PAT with Contents read
+and write on `baires/homebrew-tap` only. Pull requests skip the notification
+when the secret is missing. A published release fails the notify job until
+the secret is set. Prereleases are not sent to the tap.
+
 ## Real-Account Verification Checklist
 
 If your change touches setup, auth, or the upload path, verify it against a
